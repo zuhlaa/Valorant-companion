@@ -1,22 +1,37 @@
-# Valorant Match Tracker (Auto Mode)
+# VALORANT Match Tracker & Auto-Locker
 
-A Python script that automatically displays match information and can auto-lock or prelock agents in Valorant matches.
+A VALORANT match tracker and auto-locker with automatic match information display.
 
-## ⚠️ WARNING
+## ⚠️ WARNING - READ THIS FIRST
 
-**Using auto-lock features may violate Valorant's Terms of Service and could result in a ban. Use at your own risk.**
+**Instalocking is a bannable offense. You likely won't get banned unless you go around telling everyone you have an auto-locker. I wouldn't recommend keeping it running for long periods of time because it sends API requests instead of listening to the websocket. This is a very small project for educational purposes so I won't provide features like failsafes, that is up to you. Even if Riot detects this (through .exe blacklisting or pregame request measurement), you will likely only receive a 7 day ban for API abuse. That's still unlikely to occur and hasn't happened yet.**
 
-This tool is for educational purposes only. The developers are not responsible for any consequences resulting from the use of this software.
+> **Important:** With all programs like this, there is no guarantee that it's safe because using the VALORANT API in this manner is against Riot's Terms of Service. However, this program does not use an autoclicker to select the agent, read the game's memory, or change the game's files; therefore, the anticheat shouldn't be triggered. No suspensions have been reported so far from using this method of exploit.
 
-## Features
+**Use at your own risk. The developers are not responsible for any bans or consequences resulting from the use of this software.**
 
-- **Automatic Display**: Automatically shows match information without user interaction
-- **Pre-Game Info**: Displays map, side (Attackers/Defenders), and team names after 2 seconds
-- **In-Game Info**: Automatically displays all players with their agents and teams
-- **Auto-Lock**: Automatically instalocks your preferred agent when entering agent select
-- **Auto-Lightlock**: Automatically prelocks (selects but doesn't lock) your preferred agent
+## 🎯 What This Script Can Do
 
-## Installation
+This script provides 4 main features:
+
+1. **🔒 Instalock** - Automatically lock your preferred agent instantly when entering agent select
+2. **○ Prelock** - Automatically select (but don't lock) your preferred agent, allowing you to lock manually
+3. **⚔️ Show Side** - Display which side you're on (Attackers or Defenders) in the pre-game lobby
+4. **👥 Reveal Player Names** - Show all player names in your game (both your team and enemy team)
+
+## 🎡 Features
+
+* **Automatic Match Display**: Automatically shows match information (map, side, teams, agents) without user interaction
+* **Auto-Lock**: Automatically instalocks your preferred agent when entering agent select
+* **Auto-Lightlock**: Automatically prelocks (selects but doesn't lock) your preferred agent
+* **Map-Specific Agents**: Configure different agents for different maps
+* **Region Auto-Detection**: Automatically detects your region, or manually set it
+* **Pre-Game Info**: Displays map, side (Attackers/Defenders), and team names
+* **In-Game Info**: Automatically displays all players with their agents and teams
+* Works separately from the game through the VALORANT API using valclient
+* Clean console-based UI with formatted match information
+
+## 📩 Installation
 
 1. **Install Python 3.8+** if you haven't already
 
@@ -28,53 +43,100 @@ This tool is for educational purposes only. The developers are not responsible f
    ```
 
 4. **Activate the virtual environment**:
-   - Windows: `valorant_env\Scripts\activate`
-   - Linux/Mac: `source valorant_env/bin/activate`
+   - **Windows**: `valorant_env\Scripts\activate`
+   - **Linux/Mac**: `source valorant_env/bin/activate`
 
 5. **Install dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
 
-## Configuration
+## ❔ How to Use
 
-Edit `config.json` to configure the tracker:
+### Basic Setup
 
+1. **Start VALORANT** and make sure you're logged in (main menu visible)
+
+2. **Configure your settings** in `config.json` (see Configuration section below)
+
+3. **Run the script**:
+   ```bash
+   python valorant_match_info_auto.py
+   ```
+
+4. **Wait for a match** - The script will automatically:
+   - When entering agent select: Show map, side, and team names
+   - Auto-lock or prelock your agent if configured
+   - When entering the game: Show all players with their agents and teams
+
+### Configuration
+
+Edit `config.json` to configure the tracker. Here's what each option does:
+
+#### Setting Your Region
+
+You have two options for region:
+
+**Option 1: Auto-Detection (Recommended)**
 ```json
 {
-  "autolock": false,
-  "autolightlock": false,
-  "preferred_agent": null,
-  "agents_per_map": {},
-  "check_interval": 5,
   "region": null
 }
 ```
+Set `region` to `null` and the script will automatically detect your region from the Valorant client.
 
-### Configuration Options
+**Option 2: Manual Region**
+```json
+{
+  "region": "na"
+}
+```
+Set `region` to one of: `"na"` (North America), `"latam"` (Latin America), `"br"` (Brazil), `"eu"` (Europe), `"kr"` (Korea), `"ap"` (Asia Pacific)
 
-- **`autolock`** (boolean): If `true`, automatically instalocks the agent (from `agents_per_map` or `preferred_agent`)
-- **`autolightlock`** (boolean): If `true`, automatically prelocks (selects but doesn't lock) the agent (from `agents_per_map` or `preferred_agent`)
-- **`preferred_agent`** (string or null): Default agent name in lowercase for all maps (e.g., `"jett"`, `"sova"`, `"brimstone"`). Used as fallback if no map-specific agent is set.
-- **`agents_per_map`** (object): Map-specific agents. Keys are map names in lowercase (e.g., `"ascent"`, `"bind"`, `"haven"`), values are agent names in lowercase. If a map is not specified, `preferred_agent` is used.
-- **`check_interval`** (number): How often to check for game state changes (in seconds, default: 5)
-- **`region`** (string or null): Your region (`"na"`, `"eu"`, `"ap"`, `"kr"`, `"latam"`, `"br"`), or `null` for auto-detection
+#### Setting Up Auto-Lock
 
-### Example Configuration
+**Enable Auto-Lock:**
+```json
+{
+  "autolock": true,
+  "autolightlock": false,
+  "preferred_agent": "jett"
+}
+```
+This will automatically instalock the agent when entering agent select.
 
-**Auto-lock Jett on all maps:**
+**Enable Auto-Lightlock (Prelock):**
+```json
+{
+  "autolock": false,
+  "autolightlock": true,
+  "preferred_agent": "jett"
+}
+```
+This will automatically select (but not lock) the agent - you can lock it manually in-game.
+
+#### Adding Agents Per Map
+
+You can set different agents for different maps. **Map-specific agents take priority over `preferred_agent`.**
+
+**Priority order:**
+1. **Map-specific agent** (if set in `agents_per_map` and not `null`) → **This is used first**
+2. **Preferred agent** (fallback if map-specific is `null` or not set)
+
+**Example: Map-specific takes priority**
 ```json
 {
   "autolock": true,
   "autolightlock": false,
   "preferred_agent": "jett",
-  "agents_per_map": {},
-  "check_interval": 5,
-  "region": null
+  "agents_per_map": {
+    "ascent": "reyna"
+  }
 }
 ```
+On Ascent, it will pick **Reyna** (not Jett), because the map-specific agent takes priority. On all other maps, it will use **Jett** (the preferred agent).
 
-**Auto-lock different agents per map:**
+**Example: Different agent for each map**
 ```json
 {
   "autolock": true,
@@ -83,27 +145,37 @@ Edit `config.json` to configure the tracker:
   "agents_per_map": {
     "ascent": "jett",
     "bind": "sova",
-    "breeze": null,
-    "fracture": null,
+    "breeze": "viper",
+    "fracture": "breach",
     "haven": "brimstone",
     "icebox": "sage",
-    "lotus": null,
-    "pearl": null,
+    "lotus": "omen",
+    "pearl": "astra",
     "split": "raze",
-    "sunset": null,
-    "abyss": null
-  },
-  "check_interval": 5,
-  "region": null
+    "sunset": "gekko",
+    "abyss": "clove",
+    "corrode": null,
+    "district": null,
+    "kasbah": null,
+    "piazza": null,
+    "drift": null,
+    "glitch": null,
+    "skirmish": null
+  }
 }
 ```
 
-**Auto-prelock with map-specific agents (fallback to Sova if map not specified):**
+**How it works:**
+- **Map-specific agents take priority**: If a map is set to an agent name (lowercase), that agent will be used for that map (even if `preferred_agent` is set)
+- **Fallback to preferred agent**: If a map is set to `null` or not specified, the `preferred_agent` will be used
+- Map names must be in **lowercase**: `"ascent"`, `"bind"`, `"haven"`, `"split"`, `"icebox"`, `"breeze"`, `"fracture"`, `"pearl"`, `"lotus"`, `"sunset"`, `"abyss"`, `"corrode"`, `"district"`, `"kasbah"`, `"piazza"`, `"drift"`, `"glitch"`, `"skirmish"`
+
+**Example: Jett on Ascent, Sova on Bind, Jett everywhere else**
 ```json
 {
-  "autolock": false,
-  "autolightlock": true,
-  "preferred_agent": "sova",
+  "autolock": true,
+  "autolightlock": false,
+  "preferred_agent": "jett",
   "agents_per_map": {
     "ascent": "jett",
     "bind": "sova",
@@ -115,62 +187,62 @@ Edit `config.json` to configure the tracker:
     "pearl": null,
     "split": null,
     "sunset": null,
-    "abyss": null
-  },
-  "check_interval": 5,
-  "region": "eu"
+    "abyss": null,
+    "corrode": null,
+    "district": null,
+    "kasbah": null,
+    "piazza": null,
+    "drift": null,
+    "glitch": null,
+    "skirmish": null
+  }
 }
 ```
 
-**Note:** 
-- All maps are already listed in `agents_per_map` with `null` values
-- Simply replace `null` with the agent name (lowercase) for the maps you want
-- Map names are case-insensitive, but use lowercase: `"ascent"`, `"bind"`, `"haven"`, `"split"`, `"icebox"`, `"breeze"`, `"fracture"`, `"pearl"`, `"lotus"`, `"sunset"`, `"abyss"`, `"corrode"`, `"district"`, `"kasbah"`, `"piazza"`, `"drift"`, `"glitch"`, `"skirmish"`
-- If a map is set to `null`, the `preferred_agent` will be used as fallback
+#### Other Settings
 
-## Usage
+- **`check_interval`**: How often to check for game state changes (in seconds, default: 5). Lower values = faster detection but more API requests.
 
-1. **Make sure Valorant is running** and you're logged in
+### Complete Configuration Example
 
-2. **Run the script**:
-   ```bash
-   python valorant_match_info_auto.py
-   ```
+```json
+{
+  "autolock": true,
+  "autolightlock": false,
+  "preferred_agent": "jett",
+  "agents_per_map": {
+    "ascent": "jett",
+    "bind": "sova",
+    "breeze": "viper",
+    "fracture": null,
+    "haven": "brimstone",
+    "icebox": "sage",
+    "lotus": null,
+    "pearl": null,
+    "split": "raze",
+    "sunset": null,
+    "abyss": null,
+    "corrode": null,
+    "district": null,
+    "kasbah": null,
+    "piazza": null,
+    "drift": null,
+    "glitch": null,
+    "skirmish": null
+  },
+  "check_interval": 5,
+  "region": null
+}
+```
 
-3. **Wait for a match** - The script will automatically:
-   - When entering agent select: Show map, side, and team names (after 2 seconds)
-   - Auto-lock or prelock your agent if configured
-   - When entering the game: Show all players with their agents and teams
-
-## How It Works
-
-### Pre-Game (Agent Select)
-
-1. **Immediately shows**:
-   - Map name
-   - Side (Attackers or Defenders)
-
-2. **After 2 seconds**:
-   - Shows all player names in your team
-   - Shows agent selections and lock status
-
-3. **Auto-lock/lightlock** (if enabled):
-   - Automatically locks or prelocks your preferred agent
-
-### In-Game
-
-- **Automatically displays**:
-  - All players in the match
-  - Their selected agents
-  - Their team (Blue or Red)
-
-## Troubleshooting
+## ❌ Troubleshooting
 
 ### "Unable to activate; is VALORANT running?"
 
 - Make sure Valorant is **fully started** (main menu visible)
 - Wait a few seconds after starting Valorant before running the script
 - Try restarting Valorant
+- Make sure you're **logged into Valorant** (not just the launcher)
 
 ### "Local API port not accessible"
 
@@ -178,27 +250,56 @@ Edit `config.json` to configure the tracker:
 - Wait a bit longer and try again
 - Make sure Valorant is running (not just the launcher)
 
+### Auto-lock not working
+
+- Make sure `autolock` or `autolightlock` is set to `true` in `config.json`
+- Make sure `preferred_agent` is set to a valid agent name (lowercase)
+- Check that the agent name is spelled correctly (e.g., `"jett"`, `"sova"`, `"brimstone"`)
+- Check the log file `valorant_tracker.log` for errors
+- Make sure you're in agent select (pre-game)
+
 ### Agent names not showing
 
 - This is normal if players haven't fully loaded yet
 - The script will retry automatically
 - Some API calls may take a moment
 
-### Auto-lock not working
+### Region detection issues
 
-- Make sure `autolock` or `autolightlock` is set to `true` in `config.json`
-- Make sure `preferred_agent` is set to a valid agent name (lowercase)
-- Check the log file `valorant_tracker.log` for errors
+- If auto-detection fails, manually set your region in `config.json`
+- Make sure the region code is correct: `"na"` (North America), `"latam"` (Latin America), `"br"` (Brazil), `"eu"` (Europe), `"kr"` (Korea), `"ap"` (Asia Pacific)
 
-## Disclaimer
+## ❓ Can I Get Banned?
 
-This tool is provided as-is for educational purposes. Using auto-lock features may violate Valorant's Terms of Service. Use at your own risk. The developers are not responsible for any bans or consequences resulting from the use of this software.
+**Instalocking is a bannable offense.** You likely won't get banned unless you go around telling everyone you have an auto-locker. I wouldn't recommend keeping it running for long periods of time because it sends API requests instead of listening to the websocket. This is a very small project for educational purposes so I won't provide features like failsafes, that is up to you. Even if Riot detects this (through .exe blacklisting or pregame request measurement), you will likely only receive a 7 day ban for API abuse. That's still unlikely to occur and hasn't happened yet.
 
-## Credits
+> **Important:** With all programs like this, there is no guarantee that it's safe because using the VALORANT API in this manner is against Riot's Terms of Service. However, this program does not use an autoclicker to select the agent, read the game's memory, or change the game's files; therefore, the anticheat shouldn't be triggered. No suspensions have been reported so far from using this method of exploit.
 
-- Uses [valclient](https://github.com/colinhartigan/valclient.py) for Valorant API interaction
-- Agent and map data from [valorant-api.com](https://valorant-api.com)
+**Use at your own risk.**
 
-## License
+## 🤷‍♀️ Support / Feedback
 
-This project is provided as-is without any warranty.
+* Check the log file `valorant_tracker.log` for detailed error messages
+* Make sure your `config.json` is valid JSON (use a JSON validator if needed)
+* Ensure all agent names are in lowercase
+* Make sure Valorant is fully running and you're logged in before starting the script
+
+## 📰 Credits
+
+* Uses [valclient](https://github.com/colinhartigan/valclient.py) for Valorant API interaction
+* Agent and map data from [valorant-api.com](https://valorant-api.com)
+* Inspired by similar Valorant API projects
+
+## Legal
+
+This is not affiliated with Riot Games. If you are a representative of Riot and wish to have this repository taken down, please reach out via the repository issues.
+
+## About
+
+A VALORANT match tracker and auto-locker with automatic match information display. This tool is provided as-is for educational purposes only.
+
+### Notes
+
+* I do not plan on developing this further extensively, but I will maintain the code and update agents - this will continue to work.
+* I am also not responsible for **misuse** of this application, I do not condone using this and this only exists as an educational resource.
+* This project uses the VALORANT API in a way that may violate Riot's Terms of Service. Use at your own risk.
