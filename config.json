@@ -1,0 +1,27 @@
+{
+  "autolock": true,
+  "autolightlock": false,
+  "preferred_agent": "jett",
+  "agents_per_map": {
+    "ascent": null,
+    "bind": null,
+    "breeze": null,
+    "fracture": null,
+    "haven": null,
+    "icebox": null,
+    "lotus": null,
+    "pearl": null,
+    "split": null,
+    "sunset": null,
+    "abyss": null,
+    "corrode": null,
+    "district": null,
+    "kasbah": null,
+    "piazza": null,
+    "drift": null,
+    "glitch": null,
+    "skirmish": null
+  },
+  "check_interval": 5,
+  "region": "eu"
+}
