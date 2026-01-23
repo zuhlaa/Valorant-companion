@@ -4,7 +4,7 @@
   "preferred_agent": "jett",
   "agents_per_map": {
     "ascent": null,
-    "bind": null,
+    "bind": "reyna",
     "breeze": null,
     "fracture": null,
     "haven": null,
@@ -14,7 +14,7 @@
     "split": null,
     "sunset": null,
     "abyss": null,
-    "corrode": null,
+    "corrode": "reyna",
     "district": null,
     "kasbah": null,
     "piazza": null,

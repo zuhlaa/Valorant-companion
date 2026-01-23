@@ -116,31 +116,21 @@ config = load_config()
 preferred_region = config.get('region')
 
 # Initialize client with region detection
-print("Initializing Valorant client connection...")
-print("   Checking if Valorant client is running...")
-
 # Quick check if local API might be accessible
 if not check_local_api_port():
-    print("   ⚠ Local API port not accessible. Valorant might not be running or ready.")
-    print("   Continuing anyway...")
+    logger.debug("Local API port not accessible. Valorant might not be running or ready.")
 
 client = None
+user_display_name = "Unknown"
+user_region = "Unknown"
 try:
-    # Use preferred region from config, or default to "na"
+    # Use preferred region from config
     initial_region = preferred_region if preferred_region else "na"
-    if preferred_region:
-        print(f"   Using region from config: {preferred_region}")
-    else:
-        print(f"   Using default region: {initial_region} (will auto-detect if possible)")
     
     # Try to create client - this should be fast
-    print("   Creating client instance...")
     client = Client(region=initial_region)
     
     # Try to activate with timeout to prevent hanging
-    print("   Activating client connection...")
-    print("   (This may take a few seconds if Valorant just started)...")
-    
     activation_success = [False]
     activation_error = [None]
     
@@ -186,66 +176,53 @@ try:
         print("\n   The script needs the Valorant client to be running and accessible.")
         print("   Make sure Valorant is fully started (main menu visible).\n")
         exit(1)
-    
-    if activation_success[0]:
-        print("✓ Client activated")
 
-    # Detect region and verify login
+    # Region MUST be set in config - no auto-detection
+    region_mapping = {
+        'na': 'na',
+        'eu': 'eu',
+        'latam': 'latam',
+        'br': 'br',
+        'ap': 'ap',
+        'kr': 'kr',
+    }
+    
+    if not preferred_region:
+        print("\n✗ ERROR: Region not set in config.json")
+        print("\n⚠ REQUIRED: You must set your region in config.json")
+        print("   Valid regions: 'na', 'eu', 'latam', 'br', 'ap', 'kr'")
+        print("   Example: \"region\": \"eu\"")
+        print("\n   Please edit config.json and set the 'region' field.\n")
+        exit(1)
+    
+    if preferred_region.lower() not in region_mapping:
+        print(f"\n✗ ERROR: Invalid region in config: {preferred_region}")
+        print(f"\n⚠ Valid regions are: 'na', 'eu', 'latam', 'br', 'ap', 'kr'")
+        print(f"   You specified: '{preferred_region}'")
+        print("\n   Please edit config.json and set a valid region.\n")
+        exit(1)
+    
+    final_region = preferred_region.lower()
+    user_region = final_region
+    
+    # Only recreate client if region changed
+    if final_region != initial_region:
+        client = Client(region=final_region)
+        client.activate()
+    
+    # Try to get user info to verify login
+    username = "Unknown"
+    tag = ""
     try:
-        print("   Detecting region...")
-        local = client.fetch(endpoint="/riotclient/region-locale", endpoint_type="local")
-        api_region = local.get('region', local.get('affinity', '')).lower()
-        
-        # Try to get user info to verify login
-        try:
-            print("   Verifying login...")
-            user_info = client.fetch(endpoint="/chat/v1/session", endpoint_type="local")
-            if user_info:
-                username = user_info.get('game_name', 'Unknown')
-                tag = user_info.get('game_tag', '')
-                print(f"✓ Connected as: {username}#{tag}")
-        except Exception as login_error:
-            print(f"⚠ Could not verify login: {login_error}")
-            print("   Make sure you're logged into Valorant.")
-        
-        region_mapping = {
-            'na': 'na',
-            'eu': 'eu',
-            'latam': 'latam',
-            'br': 'br',
-            'ap': 'ap',
-            'kr': 'kr',
-        }
-        
-        # Use detected region unless user specified one in config
-        if preferred_region:
-            # User specified region in config, use that
-            if preferred_region.lower() in region_mapping:
-                final_region = preferred_region.lower()
-                print(f"   Using region from config: {final_region}")
-            else:
-                print(f"⚠ Invalid region in config: {preferred_region}")
-                print(f"   Using detected region: {api_region}")
-                final_region = region_mapping.get(api_region, 'na')
-        else:
-            # Auto-detect region
-            if api_region in region_mapping:
-                final_region = region_mapping[api_region]
-                print(f"   Auto-detected region: {final_region}")
-            else:
-                print(f"⚠ Unknown region: {api_region}. Using default 'na'.")
-                final_region = 'na'
-        
-        # Only recreate client if region changed
-        if final_region != initial_region:
-            print(f"   Switching to region: {final_region}")
-            client = Client(region=final_region)
-            client.activate()
-        
-        print(f"✓ Region: {final_region}")
-    except Exception as region_error:
-        print(f"⚠ Could not detect region: {region_error}")
-        print("   Continuing with default region 'na'...")
+        user_info = client.fetch(endpoint="/chat/v1/session", endpoint_type="local")
+        if user_info:
+            username = user_info.get('game_name', 'Unknown')
+            tag = user_info.get('game_tag', '')
+    except Exception as login_error:
+        logger.debug(f"Could not verify login: {login_error}")
+    
+    # Store username and region for later display
+    user_display_name = f"{username}#{tag}" if tag else username
         
 except KeyboardInterrupt:
     print("\n\nInterrupted by user. Exiting...")
@@ -262,6 +239,55 @@ except Exception as e:
     print("   - Running the script as administrator")
     print("   - Checking if antivirus/firewall is blocking the connection\n")
     exit(1)
+
+def get_party_groups(match_data, is_pre_game=True):
+    """Extract party groups from match data - players with the same PartyID are in a party together"""
+    party_groups = {}  # party_id -> list of player subjects
+    
+    if is_pre_game:
+        # Check AllyTeam
+        if 'AllyTeam' in match_data and match_data['AllyTeam']:
+            if 'Players' in match_data['AllyTeam']:
+                for player in match_data['AllyTeam']['Players']:
+                    if 'Subject' in player:
+                        # Check for PartyID field (common field names: PartyID, partyId, party_id)
+                        party_id = player.get('PartyID') or player.get('partyId') or player.get('party_id') or player.get('TeamID')
+                        if party_id:
+                            if party_id not in party_groups:
+                                party_groups[party_id] = []
+                            party_groups[party_id].append(player['Subject'])
+        
+        # Check EnemyTeam
+        if 'EnemyTeam' in match_data and match_data['EnemyTeam']:
+            if 'Players' in match_data['EnemyTeam']:
+                for player in match_data['EnemyTeam']['Players']:
+                    if 'Subject' in player:
+                        party_id = player.get('PartyID') or player.get('partyId') or player.get('party_id') or player.get('TeamID')
+                        if party_id:
+                            if party_id not in party_groups:
+                                party_groups[party_id] = []
+                            party_groups[party_id].append(player['Subject'])
+    else:
+        # In-game
+        if 'Players' in match_data:
+            for player in match_data['Players']:
+                if 'Subject' in player:
+                    party_id = player.get('PartyID') or player.get('partyId') or player.get('party_id') or player.get('TeamID')
+                    if party_id:
+                        if party_id not in party_groups:
+                            party_groups[party_id] = []
+                        party_groups[party_id].append(player['Subject'])
+    
+    # Filter out single-player "parties" (they're solo queue)
+    # Only return groups with 2+ players
+    actual_parties = {pid: players for pid, players in party_groups.items() if len(players) >= 2}
+    
+    if actual_parties:
+        logger.debug(f"Found {len(actual_parties)} party groups: {actual_parties}")
+    else:
+        logger.debug("No party groups found (all players are solo queue)")
+    
+    return actual_parties
 
 def get_puuids_from_match(match_data, is_pre_game=True):
     puuids = []
@@ -408,39 +434,109 @@ def get_map_name(map_id):
     if not map_id:
         return "Unknown"
     
-    # First try to get from map dictionary
+    # First try to get from map dictionary (UUID lookup)
     if map_id in map_uuid_to_name:
+        logger.debug(f"Map ID {map_id} found in UUID dictionary: {map_uuid_to_name[map_id]}")
         return map_uuid_to_name[map_id]
     
-    # If it's a path-like string (e.g., "/Game/Maps/Ascent/Ascent"), extract the map name
+    # List of known internal/unreleased map names to filter out
+    # These are internal names that appear in file paths but aren't actual released maps
+    internal_map_names = {"rook"}  # Add more as discovered
+    
+    # If it's a path-like string (e.g., "/Game/Maps/Ascent/Ascent" or "/Game/Maps/Corrode/Rook")
     if "/" in map_id:
-        # Extract the last part before the final slash, or the last part if it's repeated
-        parts = [p for p in map_id.split("/") if p and p != "Game" and p != "Maps"]
+        # Extract parts, filtering out empty strings and common path elements
+        parts = [p for p in map_id.split("/") if p and p not in ["Game", "Maps"]]
+        logger.info(f"Extracted path parts from '{map_id}': {parts}")
+        
         if parts:
-            # Return the last meaningful part (usually the map name)
-            return parts[-1]
+            # Filter out internal/unreleased map names FIRST
+            valid_parts = [p for p in parts if p.lower() not in internal_map_names]
+            logger.info(f"After filtering internal names {internal_map_names}: {valid_parts}")
+            
+            # If all parts were filtered out, check if it's a known internal name mapping
+            if not valid_parts:
+                logger.warning(f"All parts filtered out from '{map_id}'. Original parts: {parts}")
+                
+                # Special case: "Rook" is an internal name for "Corrode"
+                if parts and parts[0].lower() == "rook":
+                    logger.info("Detected 'Rook' - mapping to 'Corrode' (known internal name)")
+                    return "Corrode"
+                
+                # Use the first part that's not in internal names (shouldn't happen, but safety)
+                for part in parts:
+                    if part.lower() not in internal_map_names:
+                        logger.debug(f"Using fallback part: {part}")
+                        return part
+                
+                # Last resort: return Unknown instead of internal name
+                logger.error(f"All parts are internal names! Returning Unknown. Path: {map_id}, Parts: {parts}")
+                return "Unknown"
+            
+            # Try to match each valid part against known released maps (case-insensitive)
+            for part in valid_parts:
+                # Check if this matches any known map name (case-insensitive)
+                for known_map_name in map_uuid_to_name.values():
+                    if part.lower() == known_map_name.lower():
+                        logger.debug(f"Matched '{part}' to known map '{known_map_name}'")
+                        return known_map_name
+            
+            # If no match found, use the FIRST valid part (most likely to be the map name)
+            # For "/Game/Maps/Corrode/Rook", after filtering we have ["Corrode"], so use that
+            result = valid_parts[0]  # First valid part (the map name)
+            
+            # CRITICAL: Double-check that we NEVER return "Rook" or any internal name
+            if result.lower() in internal_map_names:
+                logger.error(f"ERROR: First valid part '{result}' is in internal names! This should not happen.")
+                logger.error(f"Path: {map_id}, Parts: {parts}, Valid parts: {valid_parts}")
+                # Try to find ANY part that's not in internal names
+                for part in parts:
+                    if part.lower() not in internal_map_names:
+                        result = part
+                        logger.warning(f"Using alternative part: {result}")
+                        break
+                # If still in internal names, return Unknown
+                if result.lower() in internal_map_names:
+                    logger.error(f"CRITICAL: All parts are internal names! Returning Unknown. Path: {map_id}")
+                    return "Unknown"
+            
+            logger.info(f"No match found in known maps, using first valid part: {result}")
+            logger.info(f"Map name '{result}' extracted from path '{map_id}' (filtered out: {[p for p in parts if p.lower() in internal_map_names]})")
+            return result
     
     # Fallback: show first 8 chars if it's a UUID
+    logger.debug(f"Map ID is not a path, returning first 8 chars: {map_id[:8]}...")
     return map_id[:8] + "..."
 
 def get_agent_for_map(map_name, config):
     """Get the agent to use for a specific map, or fallback to preferred_agent"""
     if not map_name or map_name == "Unknown":
         # If map is unknown, use preferred_agent
+        logger.debug(f"Map name is '{map_name}' (Unknown), using preferred_agent: {config.get('preferred_agent')}")
         return config.get('preferred_agent')
     
     # Normalize map name to lowercase for lookup
     map_name_lower = map_name.lower()
+    logger.debug(f"Looking up agent for map '{map_name}' (normalized: '{map_name_lower}')")
     
     # Check if there's a map-specific agent
     agents_per_map = config.get('agents_per_map', {})
+    logger.debug(f"Available maps in config: {list(agents_per_map.keys())}")
+    
     if agents_per_map and map_name_lower in agents_per_map:
         agent = agents_per_map[map_name_lower]
         if agent:  # Make sure it's not None or empty
+            logger.debug(f"Found map-specific agent for '{map_name_lower}': {agent}")
             return agent.lower().strip()
+        else:
+            logger.debug(f"Map '{map_name_lower}' found in config but agent is null, using preferred_agent")
+    else:
+        logger.debug(f"Map '{map_name_lower}' not found in agents_per_map, using preferred_agent")
     
     # Fallback to preferred_agent for all maps
-    return config.get('preferred_agent')
+    preferred = config.get('preferred_agent')
+    logger.debug(f"Using preferred_agent: {preferred}")
+    return preferred
 
 def save_match_history(match_data_dict):
     """Save match information to JSON file"""
@@ -582,7 +678,7 @@ def print_match_info(is_pre_game=True):
     save_match_history(match_info)
 
 def lock_agent(agent_name):
-    """Lock an agent (select and lock)"""
+    """Lock an agent (select and lock) - FAST version with minimal delays"""
     uuid = agent_dict.get(agent_name)
     if not uuid:
         logger.warning(f"Invalid agent name: {agent_name}")
@@ -591,11 +687,10 @@ def lock_agent(agent_name):
     try:
         # First select the character
         client.pregame_select_character(uuid)
-        time.sleep(0.2)  # Small delay to ensure selection is processed
-        
+        # No delay - lock immediately for speed
         # Then lock it
         client.pregame_lock_character(uuid)
-        time.sleep(0.1)  # Small delay after locking
+        # No delay - return immediately
         
         display_name = agent_uuid_to_name.get(uuid, agent_name.capitalize())
         logger.info(f"Locked {display_name} successfully.")
@@ -765,7 +860,30 @@ def show_pregame_auto(match_data, map_name):
     print(f"║ {'🗺️  Map:':<12} {map_display:<44} ║")
     
     if 'AllyTeam' in match_data and match_data['AllyTeam']:
-        side = "Attackers" if match_data['AllyTeam']['TeamID'] == "Blue" else "Defenders"
+        # Check if there's a Side field in the match data
+        ally_team_id = match_data['AllyTeam'].get('TeamID', '')
+        side = match_data['AllyTeam'].get('Side', '')
+        if not side and 'Side' in match_data:
+            side = match_data.get('Side', '')
+        
+        # If we still don't have side, try to determine from TeamID
+        if not side:
+            if 'EnemyTeam' in match_data and match_data['EnemyTeam']:
+                enemy_side = match_data['EnemyTeam'].get('Side', '')
+                if enemy_side:
+                    side = "Defenders" if enemy_side.lower() == "attack" else "Attackers"
+            
+            if not side:
+                side = "Attackers" if ally_team_id == "Blue" else "Defenders"
+        
+        # Normalize side string
+        if side and isinstance(side, str):
+            side_lower = side.lower()
+            if "attack" in side_lower:
+                side = "Attackers"
+            elif "defend" in side_lower:
+                side = "Defenders"
+        
         side_icon = "⚔️" if side == "Attackers" else "🛡️"
         print(f"║ {'Side:':<12} {side_icon} {side:<41} ║")
     print("╚" + "═"*58 + "╝")
@@ -1012,8 +1130,20 @@ check_interval = config.get('check_interval', 5)
 
 # Main loop
 logger.info("Starting Valorant Match Tracker (Auto Mode)...")
+
+# Show user info box at startup
 print("\n" + "╔" + "═"*58 + "╗")
-print("║" + " VALORANT MATCH TRACKER (AUTO MODE) ".center(58) + "║")
+print("║" + " 👤 CONNECTED ".center(58) + "║")
+print("╠" + "═"*58 + "╣")
+user_display = user_display_name if len(user_display_name) <= 44 else user_display_name[:41] + "..."
+print(f"║ {'👤 Player:':<12} {user_display:<44} ║")
+region_display = user_region.upper() if user_region else "Unknown"
+print(f"║ {'🌍 Region:':<12} {region_display:<44} ║")
+print("╚" + "═"*58 + "╝\n")
+
+# Show configuration box
+print("╔" + "═"*58 + "╗")
+print("║" + " ⚙️  CONFIGURATION ".center(58) + "║")
 print("╠" + "═"*58 + "╣")
 autolock_status = "✅ Enabled" if config.get('autolock') else "❌ Disabled"
 autolightlock_status = "✅ Enabled" if config.get('autolightlock') else "❌ Disabled"
@@ -1021,31 +1151,22 @@ print(f"║ {'Auto-lock:':<15} {autolock_status:<42} ║")
 print(f"║ {'Auto-lightlock:':<15} {autolightlock_status:<42} ║")
 if config.get('preferred_agent'):
     agent_display = agent_uuid_to_name.get(agent_dict.get(config.get('preferred_agent').lower(), ''), config.get('preferred_agent'))
-    print(f"║ {'Preferred Agent:':<15} {agent_display:<42} ║")
+    agent_display_short = agent_display if len(agent_display) <= 42 else agent_display[:39] + "..."
+    print(f"║ {'Preferred Agent:':<15} {agent_display_short:<42} ║")
 print("╠" + "═"*58 + "╣")
-print("║" + " Auto-display mode: Info shown automatically ".center(58) + "║")
 print("║" + " Monitoring game state... Press Ctrl+C to exit. ".center(58) + "║")
 print("╚" + "═"*58 + "╝\n")
 
-# Test connection
+# Test connection (silent, only log)
 try:
     test_session = client.session_fetch()
     if test_session is None:
-        print("╔" + "═"*58 + "╗")
-        print("║" + " ℹ No active session (this is normal when in menus) ".center(58) + "║")
-        print("║" + " Waiting for a game to start... ".center(58) + "║")
-        print("╚" + "═"*58 + "╝\n")
+        logger.debug("No active session (this is normal when in menus)")
     else:
         state = test_session.get('loopState', 'UNKNOWN')
-        print("╔" + "═"*58 + "╗")
-        print("║" + f" ✅ Connected to Valorant client (State: {state}) ".center(58) + "║")
-        print("╚" + "═"*58 + "╝\n")
+        logger.debug(f"Connected to Valorant client (State: {state})")
 except Exception as e:
-    print("╔" + "═"*58 + "╗")
-    print("║" + " ⚠️  Warning: Could not connect to Valorant client ".center(58) + "║")
-    print("║" + f" {str(e)[:54]} ".center(58) + "║")
-    print("║" + " Make sure Valorant is running and try again. ".center(58) + "║")
-    print("╚" + "═"*58 + "╝\n")
+    logger.debug(f"Could not connect to Valorant client: {e}")
 
 # Exception counter for main loop (to avoid spam)
 exception_counter = {'count': {}}
@@ -1076,12 +1197,7 @@ while True:
                     player_data = client.pregame_fetch_player()
                     if player_data and isinstance(player_data, dict) and 'MatchID' in player_data:
                         state = "PREGAME"
-                        match_id_short = str(player_data.get('MatchID', 'Unknown'))[:20]
-                        print("\n" + "╔" + "═"*58 + "╗")
-                        print("║" + " 🎮 PREGAME DETECTED ".center(58) + "║")
-                        print("║" + f" Match ID: {match_id_short} ".center(58) + "║")
-                        print("╚" + "═"*58 + "╝")
-                        logger.info(f"Detected PREGAME via pregame_fetch_player() (attempt {pregame_attempt + 1})")
+                        logger.debug(f"Detected PREGAME via pregame_fetch_player() (attempt {pregame_attempt + 1})")
                         break
                 except Exception as pregame_error:
                     # Not in pregame yet, try again with small delay or move to ingame check
@@ -1098,12 +1214,7 @@ while True:
                     player_data = client.coregame_fetch_player()
                     if player_data and isinstance(player_data, dict) and 'MatchID' in player_data:
                         state = "INGAME"
-                        match_id_short = str(player_data.get('MatchID', 'Unknown'))[:20]
-                        print("\n" + "╔" + "═"*58 + "╗")
-                        print("║" + " 🎯 INGAME DETECTED ".center(58) + "║")
-                        print("║" + f" Match ID: {match_id_short} ".center(58) + "║")
-                        print("╚" + "═"*58 + "╝")
-                        logger.info(f"Detected INGAME via coregame_fetch_player() (attempt {ingame_attempt + 1})")
+                        logger.debug(f"Detected INGAME via coregame_fetch_player() (attempt {ingame_attempt + 1})")
                         break
                 except Exception as ingame_error:
                     # Not in game
@@ -1161,10 +1272,9 @@ while True:
         
         # We now have state from one of the methods above
         
-        # Only print when state changes
+        # Track state changes (no console output, only logging)
         if state != last_state:
-            print(f"\n>>> State changed: {last_state} -> {state}")
-            logger.info(f"State changed: {last_state} -> {state}")
+            logger.debug(f"State changed: {last_state} -> {state}")
             last_state = state
             last_pregame_match_id = None  # Reset when state changes
         
@@ -1193,7 +1303,7 @@ while True:
                 
                 # Only process once per pre-game
                 if match_id != last_pregame_match_id:
-                    logger.info(f"Detected PREGAME - Match ID: {match_id}")
+                    logger.debug(f"Detected PREGAME - Match ID: {match_id}")
                     
                     # Fetch match data with retry
                     match_data = None
@@ -1215,7 +1325,92 @@ while True:
                         continue
                     
                     map_id = match_data.get('MapID', '')
+                    # Log the raw map_id for debugging (INFO level so it shows in logs)
+                    logger.info(f"Raw MapID from match data: {map_id}")
                     map_name = get_map_name(map_id)
+                    logger.info(f"Resolved map name: {map_name}")
+                    
+                    # AUTO-LOCK IMMEDIATELY - before any other processing
+                    agent_for_map = get_agent_for_map(map_name, config)
+                    if agent_for_map:
+                        preferred = agent_for_map.lower().strip()
+                        if preferred in agent_dict:
+                            display_name = agent_uuid_to_name.get(agent_dict[preferred], preferred.capitalize())
+                            
+                            if config.get('autolock'):
+                                # INSTANT lock - no delays, no retries, just lock immediately
+                                locked_success = False
+                                try:
+                                    uuid = agent_dict[preferred]
+                                    # Lock directly without select first (faster)
+                                    client.pregame_lock_character(uuid)
+                                    locked_success = True
+                                    logger.debug(f"Auto-locked {display_name} successfully")
+                                except Exception as auto_lock_error:
+                                    error_str = str(auto_lock_error).lower()
+                                    # If lock fails, try select then lock
+                                    if "not selected" in error_str or "select" in error_str:
+                                        try:
+                                            client.pregame_select_character(uuid)
+                                            client.pregame_lock_character(uuid)
+                                            locked_success = True
+                                            logger.debug(f"Auto-locked {display_name} (with select)")
+                                        except:
+                                            pass
+                                    # Check if agent is already locked/selected (this is actually success)
+                                    elif "already" in error_str or "selected" in error_str or "locked" in error_str:
+                                        locked_success = True
+                                        logger.debug(f"Agent {display_name} already locked/selected")
+                                
+                                # Show beautiful lock confirmation box
+                                if locked_success:
+                                    print("\n" + "╔" + "═"*58 + "╗")
+                                    print("║" + f" 🔒 {display_name} LOCKED ".center(58) + "║")
+                                    print("╚" + "═"*58 + "╝")
+                            
+                            elif config.get('autolightlock'):
+                                # INSTANT prelock
+                                prelocked_success = False
+                                try:
+                                    uuid = agent_dict[preferred]
+                                    client.pregame_select_character(uuid)
+                                    prelocked_success = True
+                                    logger.debug(f"Auto-prelocked {display_name}")
+                                except Exception as auto_prelock_error:
+                                    error_str = str(auto_prelock_error).lower()
+                                    if "already" in error_str or "selected" in error_str:
+                                        prelocked_success = True
+                                        logger.debug(f"Agent {display_name} already selected")
+                                
+                                # Show beautiful prelock confirmation box
+                                if prelocked_success:
+                                    print("\n" + "╔" + "═"*58 + "╗")
+                                    print("║" + f" ○ {display_name} PRELOCKED ".center(58) + "║")
+                                    print("╚" + "═"*58 + "╝")
+                    
+                    # Now do all the other processing (party detection, PUUIDs, etc.)
+                    # Get party groups for party detection
+                    party_groups = get_party_groups(match_data, is_pre_game=True)
+                    # Create a reverse mapping: player_puuid -> party_id (for quick lookup)
+                    player_to_party = {}
+                    # Also create a mapping: player_puuid -> party_number (for display, 1, 2, 3, etc.)
+                    player_to_party_number = {}
+                    # Color/symbol mapping for different parties
+                    party_colors = ["🔵", "🟢", "🟡", "🟣", "🟠", "🔴", "⚪", "🟤"]
+                    player_to_party_color = {}
+                    party_number = 1
+                    for party_id, players in party_groups.items():
+                        party_color = party_colors[(party_number - 1) % len(party_colors)]
+                        for player_puuid in players:
+                            player_to_party[player_puuid] = party_id
+                            player_to_party_number[player_puuid] = party_number
+                            player_to_party_color[player_puuid] = party_color
+                        party_number += 1
+                    
+                    # Log player data structure for debugging party detection
+                    if 'AllyTeam' in match_data and match_data['AllyTeam'] and 'Players' in match_data['AllyTeam']:
+                        if match_data['AllyTeam']['Players']:
+                            logger.debug(f"Sample player data keys: {list(match_data['AllyTeam']['Players'][0].keys())}")
                     
                     # Get PUUIDs for both teams
                     all_puuids = []
@@ -1230,7 +1425,7 @@ while True:
                                 if 'Subject' in player:
                                     all_puuids.append(player['Subject'])
                     
-                    # Show Map and Side IMMEDIATELY (before anything else)
+                    # Show Map and Side AFTER auto-lock (so lock happens instantly)
                     print("\n" + "╔" + "═"*58 + "╗")
                     print("║" + " 🎮 PRE-GAME INFO ".center(58) + "║")
                     print("╠" + "═"*58 + "╣")
@@ -1238,76 +1433,53 @@ while True:
                     print(f"║ {'🗺️  Map:':<12} {map_display:<44} ║")
                     
                     if 'AllyTeam' in match_data and match_data['AllyTeam']:
-                        side = "Attackers" if match_data['AllyTeam']['TeamID'] == "Blue" else "Defenders"
+                        # Check if there's a Side field in the match data
+                        # In Valorant, Blue can be either Attackers or Defenders (random assignment)
+                        # Try to get the actual side from match data
+                        ally_team_id = match_data['AllyTeam'].get('TeamID', '')
+                        # Log for debugging
+                        logger.debug(f"AllyTeam data: TeamID={ally_team_id}, Full data keys: {list(match_data['AllyTeam'].keys())}")
+                        
+                        # Check if there's a Side field in AllyTeam
+                        side = match_data['AllyTeam'].get('Side', '')
+                        if not side and 'Side' in match_data:
+                            side = match_data.get('Side', '')
+                        
+                        # If we still don't have side, try to determine from TeamID
+                        # Note: This is a fallback - Blue/Red doesn't always mean Attackers/Defenders
+                        if not side:
+                            # Try checking if there's a better indicator
+                            # Actually, let's check if EnemyTeam has opposite side info
+                            if 'EnemyTeam' in match_data and match_data['EnemyTeam']:
+                                enemy_side = match_data['EnemyTeam'].get('Side', '')
+                                if enemy_side:
+                                    # If enemy is Attackers, we're Defenders, and vice versa
+                                    side = "Defenders" if enemy_side.lower() == "attack" else "Attackers"
+                            
+                            # Last resort: use TeamID (but this might be wrong)
+                            # Actually, let's reverse it - if user says they were Defenders but we showed Attackers,
+                            # then Blue might actually be Defenders, not Attackers
+                            # For now, let's try the reverse logic
+                            if not side:
+                                # Try reversed logic first (since user reported it was wrong)
+                                side = "Defenders" if ally_team_id == "Blue" else "Attackers"
+                        
+                        # Normalize side string
+                        if side and isinstance(side, str):
+                            side_lower = side.lower()
+                            if "attack" in side_lower:
+                                side = "Attackers"
+                            elif "defend" in side_lower:
+                                side = "Defenders"
+                        
+                        logger.debug(f"Determined side: {side} (TeamID: {ally_team_id})")
                         side_icon = "⚔️" if side == "Attackers" else "🛡️"
                         print(f"║ {'Side:':<12} {side_icon} {side:<41} ║")
                     print("╚" + "═"*58 + "╝")
                     
-                    # Auto-lock FIRST (immediately, before showing names)
-                    agent_for_map = get_agent_for_map(map_name, config)
-                    
-                    if agent_for_map:
-                        preferred = agent_for_map.lower().strip()
-                        if preferred in agent_dict:
-                            display_name = agent_uuid_to_name.get(agent_dict[preferred], preferred.capitalize())
-                            
-                            if config.get('autolock'):
-                                # Auto-lock (instalock) - FAST retries (10x, no delays)
-                                print("\n" + "╔" + "═"*58 + "╗")
-                                print("║" + f" 🔒 Auto-locking {display_name} ".center(58) + "║")
-                                print("╚" + "═"*58 + "╝")
-                                
-                                max_retries = 10
-                                locked_successfully = False
-                                for attempt in range(max_retries):
-                                    try:
-                                        if lock_agent(preferred):
-                                            logger.info(f"Auto-locked {display_name} successfully on attempt {attempt + 1}")
-                                            print(f"✅ {display_name} locked!")
-                                            locked_successfully = True
-                                            break
-                                    except Exception as auto_lock_error:
-                                        error_str = str(auto_lock_error).lower()
-                                        # Check if agent is already locked/selected (this is actually success)
-                                        if "already" in error_str or "selected" in error_str or "locked" in error_str:
-                                            logger.info(f"Agent {display_name} already locked/selected")
-                                            print(f"✅ {display_name} already locked!")
-                                            locked_successfully = True
-                                            break
-                                
-                                if not locked_successfully:
-                                    logger.warning(f"Auto-lock failed for {display_name} after {max_retries} attempts")
-                            
-                            elif config.get('autolightlock'):
-                                # Auto-lightlock (prelock only) - FAST retries (10x, no delays)
-                                print("\n" + "╔" + "═"*58 + "╗")
-                                print("║" + f" ○ Auto-prelocking {display_name} ".center(58) + "║")
-                                print("╚" + "═"*58 + "╝")
-                                
-                                max_retries = 10
-                                prelocked_successfully = False
-                                for attempt in range(max_retries):
-                                    try:
-                                        if prelock_agent(preferred):
-                                            logger.info(f"Auto-prelocked {display_name} successfully on attempt {attempt + 1}")
-                                            print(f"✅ {display_name} prelocked (select manually to lock)!")
-                                            prelocked_successfully = True
-                                            break
-                                    except Exception as auto_prelock_error:
-                                        error_str = str(auto_prelock_error).lower()
-                                        # Check if agent is already selected (this is actually success)
-                                        if "already" in error_str or "selected" in error_str:
-                                            logger.info(f"Agent {display_name} already selected")
-                                            print(f"✅ {display_name} already selected!")
-                                            prelocked_successfully = True
-                                            break
-                                
-                                if not prelocked_successfully:
-                                    logger.warning(f"Auto-prelock failed for {display_name} after {max_retries} attempts")
-                    
-                    # Wait 2 seconds, then fetch and show team names
+                    # Fetch and show team names (reduced delay for faster display)
                     print("\n⏳ Loading team names...")
-                    time.sleep(2)
+                    time.sleep(0.5)  # Reduced from 2 seconds to 0.5 seconds
                     
                     # Fetch names
                     name_map = {}
@@ -1329,7 +1501,13 @@ while True:
                             name = name_map.get(player.get('Subject', ''), "Unknown")
                             agent_name = get_agent_name(player.get('CharacterID'))
                             locked = "🔒" if player.get('CharacterSelectionState') == 'locked' else "○"
-                            print(f"║ {idx:2}. {locked} {name:<22} │ {agent_name:<20} ║")
+                            # Check if player is in a party
+                            player_puuid = player.get('Subject', '')
+                            party_indicator = ""
+                            if player_puuid in player_to_party:
+                                party_color = player_to_party_color.get(player_puuid, "👥")
+                                party_indicator = f" {party_color}"
+                            print(f"║ {idx:2}. {locked} {name:<20}{party_indicator:<2} │ {agent_name:<20} ║")
                     else:
                         print("║ ⚠️  No team data available".ljust(58) + " ║")
                     print("╠" + "═"*58 + "╣")
@@ -1343,7 +1521,13 @@ while True:
                             name = name_map.get(player.get('Subject', ''), "Unknown")
                             agent_name = get_agent_name(player.get('CharacterID'))
                             locked = "🔒" if player.get('CharacterSelectionState') == 'locked' else "○"
-                            print(f"║ {idx:2}. {locked} {name:<22} │ {agent_name:<20} ║")
+                            # Check if player is in a party
+                            player_puuid = player.get('Subject', '')
+                            party_indicator = ""
+                            if player_puuid in player_to_party:
+                                party_color = player_to_party_color.get(player_puuid, "👥")
+                                party_indicator = f" {party_color}"
+                            print(f"║ {idx:2}. {locked} {name:<20}{party_indicator:<2} │ {agent_name:<20} ║")
                         print("╠" + "═"*58 + "╣")
                     
                     print("╚" + "═"*58 + "╝\n")
@@ -1368,7 +1552,7 @@ while True:
                 
                 # Only process once per game
                 if match_id != last_pregame_match_id:
-                    logger.info(f"Detected INGAME - Match ID: {match_id}")
+                    logger.debug(f"Detected INGAME - Match ID: {match_id}")
                     match_data = client.coregame_fetch_match()
                     puuids = get_puuids_from_match(match_data, is_pre_game=False)
                     
@@ -1403,7 +1587,7 @@ while True:
         time.sleep(check_interval)
         
     except KeyboardInterrupt:
-        logger.info("Exiting by user request.")
+        logger.debug("Exiting by user request.")
         print("\n" + "╔" + "═"*58 + "╗")
         print("║" + " 👋 Exiting. Goodbye! ".center(58) + "║")
         print("╚" + "═"*58 + "╝")

@@ -1,6 +1,6 @@
-# VALORANT Match Tracker & Auto-Locker
+# VALORANT Instalocker & Name Revealer
 
-A VALORANT match tracker and auto-locker with automatic match information display.
+A VALORANT instalocker with hidden name revealer - automatically lock agents and reveal player names in your matches.
 
 ## ⚠️ WARNING - READ THIS FIRST
 
@@ -12,22 +12,26 @@ A VALORANT match tracker and auto-locker with automatic match information displa
 
 ## 🎯 What This Script Can Do
 
-This script provides 4 main features:
+This script provides 5 main features:
 
 1. **🔒 Instalock** - Automatically lock your preferred agent instantly when entering agent select
 2. **○ Prelock** - Automatically select (but don't lock) your preferred agent, allowing you to lock manually
 3. **⚔️ Show Side** - Display which side you're on (Attackers or Defenders) in the pre-game lobby
 4. **👥 Reveal Player Names** - Show all player names in your game (both your team and enemy team)
+5. **🎨 Party Detection** - See which players are grouped together in parties (color-coded by party)
 
 ## 🎡 Features
 
-* **Automatic Match Display**: Automatically shows match information (map, side, teams, agents) without user interaction
 * **Auto-Lock**: Automatically instalocks your preferred agent when entering agent select
 * **Auto-Lightlock**: Automatically prelocks (selects but doesn't lock) your preferred agent
+* **Hidden Name Revealer**: Reveals all player names in your game (both your team and enemy team) - even before they're visible in-game
+* **Party Detection**: Shows which players are grouped together in parties with color-coded indicators
 * **Map-Specific Agents**: Configure different agents for different maps
-* **Region Auto-Detection**: Automatically detects your region, or manually set it
+* **Manual Region Configuration**: Set your region manually in config.json (required)
 * **Pre-Game Info**: Displays map, side (Attackers/Defenders), and team names
 * **In-Game Info**: Automatically displays all players with their agents and teams
+* **Fast Auto-Lock**: Optimized for instant agent locking (no delays)
+* **Clean UI**: Beautiful formatted boxes for all information (no console log spam)
 * Works separately from the game through the VALORANT API using valclient
 * Clean console-based UI with formatted match information
 
@@ -65,9 +69,11 @@ This script provides 4 main features:
    ```
 
 4. **Wait for a match** - The script will automatically:
+   - Display your username and region in a startup box
    - When entering agent select: Show map, side, and team names
-   - Auto-lock or prelock your agent if configured
+   - Auto-lock or prelock your agent instantly if configured (with confirmation box)
    - When entering the game: Show all players with their agents and teams
+   - Display party information with color-coded indicators
 
 ### Configuration
 
@@ -75,23 +81,25 @@ Edit `config.json` to configure the tracker. Here's what each option does:
 
 #### Setting Your Region
 
-You have two options for region:
+**⚠️ REQUIRED: You MUST set your region in config.json**
 
-**Option 1: Auto-Detection (Recommended)**
+Auto-detection is not reliable, so you need to manually set your region:
+
 ```json
 {
-  "region": null
+  "region": "eu"
 }
 ```
-Set `region` to `null` and the script will automatically detect your region from the Valorant client.
 
-**Option 2: Manual Region**
-```json
-{
-  "region": "na"
-}
-```
-Set `region` to one of: `"na"` (North America), `"latam"` (Latin America), `"br"` (Brazil), `"eu"` (Europe), `"kr"` (Korea), `"ap"` (Asia Pacific)
+**Available regions:**
+- `"na"` - North America
+- `"eu"` - Europe
+- `"latam"` - Latin America
+- `"br"` - Brazil
+- `"ap"` - Asia Pacific
+- `"kr"` - Korea
+
+**Important:** If you don't set the region, the script will not start and show an error message.
 
 #### Setting Up Auto-Lock
 
@@ -231,7 +239,7 @@ On Ascent, it will pick **Reyna** (not Jett), because the map-specific agent tak
     "skirmish": null
   },
   "check_interval": 5,
-  "region": null
+  "region": "eu"
 }
 ```
 
@@ -264,10 +272,11 @@ On Ascent, it will pick **Reyna** (not Jett), because the map-specific agent tak
 - The script will retry automatically
 - Some API calls may take a moment
 
-### Region detection issues
+### Region configuration issues
 
-- If auto-detection fails, manually set your region in `config.json`
+- **You MUST set your region manually in `config.json`** - auto-detection is not supported
 - Make sure the region code is correct: `"na"` (North America), `"latam"` (Latin America), `"br"` (Brazil), `"eu"` (Europe), `"kr"` (Korea), `"ap"` (Asia Pacific)
+- If the region is not set or invalid, the script will exit with an error message
 
 ## ❓ Can I Get Banned?
 
@@ -296,7 +305,7 @@ This is not affiliated with Riot Games. If you are a representative of Riot and 
 
 ## About
 
-A VALORANT match tracker and auto-locker with automatic match information display. This tool is provided as-is for educational purposes only.
+A VALORANT instalocker with hidden name revealer - automatically lock agents and reveal player names in your matches. This tool is provided as-is for educational purposes only.
 
 ### Notes
 
